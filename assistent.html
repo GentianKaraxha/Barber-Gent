@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barber Gent – Assistent</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root { --ink:#0e0e0e; --cream:#f5f0e8; --gold:#c8a96e; --gold-light:#e8c97a; --dark:#1a1a1a; --mid:#2e2e2e; --muted:#888; --green:#27ae60; --red:#c0392b; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--ink); color:var(--cream); font-family:'DM Sans',sans-serif; min-height:100vh; }
+body::before { content:''; position:fixed; inset:0; background-image:repeating-linear-gradient(0deg,transparent,transparent 40px,rgba(200,169,110,0.03) 40px,rgba(200,169,110,0.03) 41px),repeating-linear-gradient(90deg,transparent,transparent 40px,rgba(200,169,110,0.03) 40px,rgba(200,169,110,0.03) 41px); pointer-events:none; z-index:0; }
+.container { position:relative; z-index:1; max-width:680px; margin:0 auto; padding:0 20px 60px; }
+header { text-align:center; padding:40px 0 30px; border-bottom:1px solid rgba(200,169,110,0.2); margin-bottom:30px; }
+.logo-mark { width:48px; height:48px; margin:0 auto 12px; border:2px solid var(--gold); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; }
+h1 { font-family:'Bebas Neue',sans-serif; font-size:clamp(32px,8vw,48px); letter-spacing:3px; color:var(--cream); line-height:1; margin-bottom:4px; }
+.tagline { font-size:11px; letter-spacing:4px; text-transform:uppercase; color:var(--gold); font-weight:300; }
+label { display:block; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--gold); margin-bottom:8px; font-weight:500; }
+textarea, input { width:100%; background:var(--dark); border:1.5px solid var(--mid); border-radius:8px; padding:14px 16px; font-family:'DM Sans',sans-serif; font-size:15px; color:var(--cream); outline:none; transition:border-color 0.2s; }
+textarea:focus, input:focus { border-color:var(--gold); }
+textarea { min-height:180px; resize:vertical; }
+textarea::placeholder, input::placeholder { color:#555; }
+.btn { width:100%; padding:16px; border:none; border-radius:8px; font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:2px; cursor:pointer; transition:all 0.2s; background:var(--gold); color:var(--ink); margin-top:16px; }
+.btn:hover { background:var(--gold-light); transform:translateY(-2px); }
+.btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+.result { background:var(--dark); border:1.5px solid rgba(200,169,110,0.3); border-radius:10px; padding:24px; margin-top:24px; white-space:pre-wrap; line-height:1.7; font-size:14px; display:none; }
+.result h3 { font-family:'Bebas Neue',sans-serif; letter-spacing:2px; color:var(--gold); margin-bottom:12px; font-size:20px; }
+.loading { text-align:center; padding:20px; color:var(--gold); display:none; font-size:14px; }
+.error { background:rgba(192,57,43,0.1); border:1px solid rgba(192,57,43,0.4); border-radius:6px; padding:12px 16px; font-size:13px; color:#e74c3c; margin-top:16px; display:none; }
+.hint { font-size:12px; color:var(--muted); margin-top:8px; line-height:1.5; }
+#loginPanel { max-width:400px; margin:60px auto; }
+#mainPanel { display:none; }
+.field { margin-bottom:20px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo-mark">🤖</div>
+    <h1>TERMIN-ASSISTENT</h1>
+    <div class="tagline">Barber Gent · Intern</div>
+  </header>
+
+  <!-- LOGIN -->
+  <div id="loginPanel">
+    <div class="field">
+      <label>Passwort</label>
+      <input type="password" id="pwInput" placeholder="••••••••" onkeydown="if(event.key==='Enter')checkPw()">
+    </div>
+    <button class="btn" onclick="checkPw()">Anmelden</button>
+    <div class="error" id="pwError">Falsches Passwort.</div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="mainPanel">
+    <div class="field">
+      <label>WhatsApp-Anfragen hier einfügen</label>
+      <textarea id="requestsInput" placeholder="Kopiere hier alle Anfragen rein, z.B.:
+
+📅 13.06 | 18:45 Uhr – Haarschnitt
+👤 Leon Müller
+📧 leon@gmail.com
+
+📅 13.06 | 18:45 Uhr – Schnitt + Bart
+👤 Kaya Yilmaz
+..."></textarea>
+      <div class="hint">Jede Anfrage enthält automatisch einen Zeitstempel (🕐 Angefragt um: ...) – der Assistent erkennt selbst, wer zuerst angefragt hat. Reihenfolge beim Einfügen ist egal. Notizen wie "Tim ist Stammkunde" kannst du einfach dazuschreiben.</div>
+    </div>
+    <button class="btn" id="analyzeBtn" onclick="analyze()">Analysieren</button>
+    <div class="loading" id="loading">⏳ Analysiere Anfragen und prüfe freie Slots...</div>
+    <div class="error" id="errorBox"></div>
+    <div class="result" id="resultBox"></div>
+  </div>
+</div>
+
+<script>
+// ── KONFIGURATION ───────────────────────────────────────────
+const PASSWORT = "barbergent2026";            // Passwort zum Anmelden – ändere es!
+const API_KEY = "HIER_DEIN_ANTHROPIC_API_KEY"; // von console.anthropic.com
+const SHEET_ID = "1VX_5m_Utycg2_v6NTZoCPC9NCYHHFbDBRYeTgGxiFlU";
+// ────────────────────────────────────────────────────────────
+
+function checkPw() {
+  const pw = document.getElementById('pwInput').value;
+  if (pw === PASSWORT) {
+    document.getElementById('loginPanel').style.display = 'none';
+    document.getElementById('mainPanel').style.display = 'block';
+  } else {
+    document.getElementById('pwError').style.display = 'block';
+  }
+}
+
+function parseTime(cell) {
+  if (!cell) return null;
+  if (typeof cell.v === "number") {
+    const mins = Math.round(cell.v * 24 * 60);
+    return String(Math.floor(mins/60)).padStart(2,"0") + ":" + String(mins%60).padStart(2,"0");
+  }
+  if (cell.f) return cell.f.substring(0,5);
+  if (typeof cell.v === "string") return cell.v.substring(0,5);
+  return null;
+}
+
+function parseDate(cell) {
+  if (!cell) return null;
+  if (cell.f) return cell.f.trim();
+  if (typeof cell.v === "string") {
+    if (cell.v.startsWith("Date(")) {
+      const p = cell.v.slice(5,-1).split(",");
+      return String(p[2]).padStart(2,"0") + "." + String(parseInt(p[1])+1).padStart(2,"0") + "." + p[0];
+    }
+    return cell.v.trim();
+  }
+  return null;
+}
+
+async function loadSlots() {
+  const monthNames = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+  const now = new Date();
+  const toLoad = [monthNames[now.getMonth()]];
+  const next = new Date(now.getFullYear(), now.getMonth()+1, 1);
+  if (!toLoad.includes(monthNames[next.getMonth()])) toLoad.push(monthNames[next.getMonth()]);
+
+  let free = [];
+  let booked = [];
+
+  for (const name of toLoad) {
+    try {
+      const url = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:json&sheet=" + encodeURIComponent(name);
+      const res = await fetch(url);
+      const text = await res.text();
+      const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+      if (!match) continue;
+      const json = JSON.parse(match[1]);
+      if (!json.table || !json.table.rows) continue;
+
+      for (const row of json.table.rows) {
+        if (!row.c) continue;
+        const dateStr = parseDate(row.c[5]);
+        const timeStr = parseTime(row.c[6]);
+        if (!dateStr || !timeStr) continue;
+        const colB = row.c[1];
+        const kunde = colB ? String(colB.v || colB.f || "").trim() : "";
+        if (kunde && kunde !== "null") {
+          booked.push(dateStr + " " + timeStr + " (" + kunde + ")");
+        } else {
+          free.push(dateStr + " " + timeStr);
+        }
+      }
+    } catch(e) { console.warn(e); }
+  }
+  return { free, booked };
+}
+
+async function analyze() {
+  const input = document.getElementById('requestsInput').value.trim();
+  const errBox = document.getElementById('errorBox');
+  const resBox = document.getElementById('resultBox');
+  const loading = document.getElementById('loading');
+  const btn = document.getElementById('analyzeBtn');
+
+  errBox.style.display = 'none';
+  resBox.style.display = 'none';
+
+  if (!input) {
+    errBox.textContent = "Bitte füge zuerst Anfragen ein.";
+    errBox.style.display = 'block';
+    return;
+  }
+  if (API_KEY === "HIER_DEIN_ANTHROPIC_API_KEY") {
+    errBox.textContent = "API-Key fehlt noch! Trage ihn oben im Code ein (Zeile mit API_KEY).";
+    errBox.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  loading.style.display = 'block';
+
+  try {
+    const slots = await loadSlots();
+    const heute = new Date().toLocaleDateString("de-DE", { weekday:"long", day:"2-digit", month:"2-digit", year:"numeric" });
+
+    const prompt = `Du bist der Termin-Assistent eines privaten Barbers ("Barber Gent"). Heute ist ${heute}.
+
+FREIE SLOTS (Datum Uhrzeit):
+${slots.free.join("\n") || "keine"}
+
+BEREITS GEBUCHT (Datum Uhrzeit (Kunde)):
+${slots.booked.join("\n") || "keine"}
+
+NEUE ANFRAGEN VOM BARBER (aus WhatsApp kopiert, evtl. mit Notizen):
+${input}
+
+DEINE AUFGABE:
+1. Liste alle erkannten Anfragen übersichtlich auf (Name, Wunschtermin, Service).
+2. Prüfe jeden Wunschtermin gegen freie und gebuchte Slots.
+3. Erkenne Konflikte (mehrere Kunden wollen denselben Slot). WICHTIG: Jede Anfrage enthält in der letzten Zeile einen Zeitstempel ("🕐 Angefragt um: TT.MM.JJJJ, HH:MM Uhr") – das ist der Zeitpunkt, an dem die Anfrage gesendet wurde. Wer den FRÜHESTEN Zeitstempel hat, hat zuerst angefragt und bekommt bei Konflikten den Slot. Fehlt der Zeitstempel bei einer Anfrage, behandle sie als zuletzt eingegangen.
+4. Gib eine klare Empfehlung: wen bestätigen, wem einen Alternativslot anbieten (nenne konkrete freie Slots am selben Tag oder nahe dran).
+5. Schreibe fertige, lockere aber professionelle WhatsApp-Antworten auf Deutsch (per Du) zum Kopieren – eine pro Kunde.
+
+Antworte strukturiert auf Deutsch, kompakt und praxisnah. Keine Einleitung, direkt loslegen.`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message || "API Fehler");
+
+    const answer = data.content.map(c => c.text || "").join("\n");
+    resBox.innerHTML = "<h3>📋 Analyse</h3>" + answer.replace(/</g,"&lt;").replace(/\n/g,"<br>");
+    resBox.style.display = 'block';
+
+  } catch(e) {
+    errBox.textContent = "Fehler: " + e.message;
+    errBox.style.display = 'block';
+  }
+
+  loading.style.display = 'none';
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
